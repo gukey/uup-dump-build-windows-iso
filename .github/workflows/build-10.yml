@@ -84,16 +84,14 @@ jobs:
           Set-Content $summaryFile -Value $summaryContent
           Write-Host "Generated release summary"
 
-      # 创建GitHub Release
       - name: Create Release
+        id: create_release
         uses: softprops/action-gh-release@v2.3.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: "build-${{ github.run_id }}"
-          name: "Windows ISOs - ${{ github.run_number }}"
+          tag_name: "v${{ env.build }}"
+          name: "${{ inputs.versions }} Pro (${{ env.build }})"
           body_path: summary.md
-          files: |
-            c:/output/​**​/*.iso
           draft: false
           prerelease: false
