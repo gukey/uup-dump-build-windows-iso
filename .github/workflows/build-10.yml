@@ -1,0 +1,95 @@
+name: build
+run-name: Build ${{ inputs.versions }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: "Windows version to build"
+        type: choice
+        options:
+        - Windows 11 24H2
+        - Windows 11 23H2
+        - Windows 10 22H2
+        default: Windows 11 24H2
+        required: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Log the available disk space, so we can inspect it later.
+      # NB GitHub-hosted runners have limited available disk space.
+      #    see https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#supported-runners-and-hardware-resources
+      - name: Show available disk space before build
+        run: Get-PSDrive -PSProvider FileSystem
+
+      # NB we are writing outside of the current working/job directory
+      #    because it does not have sufficient available disk space.
+      - name: Build Windows 11 24H2
+        if: ${{ inputs.versions == 'Windows 11 24H2' }}
+        run: pwsh uup-dump-get-windows-iso.ps1 windows-11 c:/output
+
+      - name: Build Windows 11 23H2
+        if: ${{ inputs.versions == 'Windows 11 23H2' }}
+        run: pwsh uup-dump-get-windows-iso.ps1 windows-11old c:/output
+
+      - name: Build Windows 10 22H2
+        if: ${{ inputs.versions == 'Windows 10 22H2' }}
+        run: pwsh uup-dump-get-windows-iso.ps1 windows-10 c:/output
+
+      - name: Show available disk space after build
+        run: Get-PSDrive -PSProvider FileSystem
+
+      - name: Upload artifact
+        id: upload_artifact
+        uses: actions/upload-artifact@v4
+        # env:
+        #  ISO_NAME: ${{ steps.build.outputs.ISO_NAME }}
+        with:
+          name: ${{ env.ISO_NAME }}
+          path: c:/output/*.ISO
+          if-no-files-found: error 
+      
+      - name: Set artifact_url
+        id: set_artifact_url
+        run: echo "artifact_url=${{ steps.upload_artifact.outputs.artifact-url }}" >> $env:GITHUB_ENV
+        
+      - name: Build summary
+        id: build_summary
+        run: |
+          $iso = Get-Content (Resolve-Path c:/output/*.json) | ConvertFrom-Json
+          Add-Content $env:GITHUB_STEP_SUMMARY @"
+          | Property | Value |
+          | :--- | :--- |
+          | Name | $($iso.name) |
+          | Build | $($iso.build) |
+          | Checksum | $($iso.checksum) |
+          $($iso.images | ForEach-Object {"| Image Name | $($_.name) |"})
+          | Iso | [$($iso.name)]($env:artifact_url) |
+          | UUP dump | [$($iso.title)]($($iso.uupDump.downloadUrl)) |
+          "@
+          # Save the GITHUB_STEP_SUMMARY contents to a file
+          (Get-Content $env:GITHUB_STEP_SUMMARY) | Set-Content summary.md
+          echo "build=$($iso.build)" >> $env:GITHUB_ENV
+          echo "name=$($iso.name)" >> $env:GITHUB_ENV
+          echo "title=$($iso.title)" >> $env:GITHUB_ENV
+          echo "iso_name=($env:ISO_NAME)" >> $env:GITHUB_ENV
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v2.3.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: "v${{ env.build }}"
+          name: "${{ inputs.versions }} Pro (${{ env.build }})"
+          body_path: summary.md
+          draft: false
+          prerelease: false
