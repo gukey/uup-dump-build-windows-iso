@@ -1,0 +1,78 @@
+name: build
+run-name: Build Windows 11 24H2
+
+on:
+  schedule:
+    - cron: '0 19 * * *'  # 每天UTC 19:00 (北京时间次日03:00)
+  workflow_dispatch:  # 保留手动触发功能
+    inputs:
+      versions:
+        description: "Windows version to build"
+        type: choice
+        options:
+          - Windows 11 24H2
+          - Windows 11 23H2
+          - Windows 10 22H2
+        default: Windows 11 24H2
+        required: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show available disk space before build
+        run: Get-PSDrive -PSProvider FileSystem
+
+      # 固定构建 Windows 11 24H2
+      - name: Build Windows 11 24H2
+        run: pwsh uup-dump-get-windows-iso.ps1 windows-11 c:/output
+
+      - name: Show available disk space after build
+        run: Get-PSDrive -PSProvider FileSystem
+
+      - name: Upload artifact
+        id: upload_artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ISO_NAME }}
+          path: c:/output/*.ISO
+          if-no-files-found: error 
+      
+      - name: Set artifact_url
+        run: echo "artifact_url=${{ steps.upload_artifact.outputs.artifact-url }}" >> $env:GITHUB_ENV
+        
+      - name: Build summary
+        run: |
+          $iso = Get-ChildItem c:/output/*.json | Select-Object -First 1 | Get-Content | ConvertFrom-Json
+          Add-Content $env:GITHUB_STEP_SUMMARY @"
+          | Property | Value |
+          | :--- | :--- |
+          | Name | $($iso.name) |
+          | Build | $($iso.build) |
+          | Checksum | $($iso.checksum) |
+          $($iso.images | ForEach-Object {"| Image Name | $($_.name) |"})
+          | Iso | [$($iso.name)]($env:artifact_url) |
+          | UUP dump | [$($iso.title)]($($iso.uupDump.downloadUrl)) |
+          "@
+          echo "build=$($iso.build)" >> $env:GITHUB_ENV
+          echo "name=$($iso.name)" >> $env:GITHUB_ENV
+          echo "title=$($iso.title)" >> $env:GITHUB_ENV
+          echo "iso_name=$($iso.name.replace(' ','_'))_$($iso.build).iso" >> $env:GITHUB_ENV
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2.3.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: "v${{ env.build }}"
+          name: "Windows 11 24H2 Pro (${{ env.build }})"
+          body_path: ${{ env.GITHUB_STEP_SUMMARY }}
+          draft: false
+          prerelease: false
