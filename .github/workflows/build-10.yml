@@ -1,4 +1,4 @@
-name: build
+name: build-10
 run-name: "Build Windows 11 24H2 + Windows 10 22H2"
 
 on:
