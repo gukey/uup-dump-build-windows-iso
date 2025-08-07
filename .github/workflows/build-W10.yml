@@ -1,9 +1,16 @@
 name: build-w10-22h2
-run-name: Build Windows 11 24H2 ${{ inputs.edition }} ${{ inputs.language }}
+run-name: Build Windows 10 22H2 ${{ inputs.edition }} ${{ inputs.language }}
 
 on:
   workflow_dispatch:
     inputs:
+      versions:  # 固定为 Windows 10 22H2（手动触发时仅显示此选项）
+        description: "Windows version to build"
+        type: choice
+        options:
+        - Windows 10 22H2  # 仅保留目标版本
+        default: Windows 10 22H2
+        required: true
       edition:
         description: "Windows edition to build"
         type: choice
@@ -103,6 +110,7 @@ jobs:
         if: ${{ inputs.netfx3 }}
         run: echo "options=${{ env.options }} -netfx3" >> $env:GITHUB_ENV
 
+      # 仅保留 Windows 10 22H2 构建步骤（移除其他版本）
       - name: Build Windows 10 22H2
         run: pwsh uup-dump-get-windows-iso.ps1 windows-10 c:/output -edition ${{ inputs.edition }} -lang ${{ inputs.language }} ${{ env.options }}
 
