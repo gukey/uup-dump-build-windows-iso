@@ -1,4 +1,4 @@
-name: build
+name: build -w11
 run-name: Build Windows 11 24H2 ${{ inputs.edition }} ${{ inputs.language }}
 
 on:
